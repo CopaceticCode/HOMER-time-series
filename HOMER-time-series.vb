@@ -1,6 +1,6 @@
-' accounts for multiple arrays (different solar orientations
+' accounts for multiple arrays (different solar orientations)
 
-Sub DeleteAllSheetsExcept()
+Sub DeleteAllSheetsExcept() ' utility for removing all sheets except 'time series'
     Dim ws As Worksheet
     Application.DisplayAlerts = False ' Prevents confirmation dialogs
     
@@ -839,9 +839,12 @@ Function CreateMermaidDiagram(ws As Worksheet) As String
     Dim colExcess As Long: colExcess = FindColumnByHeader(ws, "Excess Electrical Production")
     Dim colInverterInput As Long: colInverterInput = FindColumnByHeader(ws, "Inverter Power Input")
     Dim colInverterOutput As Long: colInverterOutput = FindColumnByHeader(ws, "Inverter Power Output")
+    
+    ' Battery columns are optional
+    Dim hasBattery As Boolean
     Dim colBatteryIn As Long: colBatteryIn = FindColumnByHeader(ws, "Generic 1kWh Li-Ion Charge Power")
     Dim colBatteryOut As Long: colBatteryOut = FindColumnByHeader(ws, "Generic 1kWh Li-Ion Discharge Power")
-    Dim colGridPurchases As Long: colGridPurchases = FindColumnByHeader(ws, "Grid Purchases")
+    hasBattery = (colBatteryIn > 0 And colBatteryOut > 0)
     
     ' Calculate totals using found columns
     Dim pvTotal, inverterInput, excess, inverterOutput As Double
@@ -852,9 +855,17 @@ Function CreateMermaidDiagram(ws As Worksheet) As String
     inverterInput = Application.WorksheetFunction.Sum(ws.Range(ws.Cells(2, colInverterInput), ws.Cells(lastRow, colInverterInput)))
     excess = Application.WorksheetFunction.Sum(ws.Range(ws.Cells(2, colExcess), ws.Cells(lastRow, colExcess)))
     inverterOutput = Application.WorksheetFunction.Sum(ws.Range(ws.Cells(2, colInverterOutput), ws.Cells(lastRow, colInverterOutput)))
-    batteryIn = Application.WorksheetFunction.Sum(ws.Range(ws.Cells(2, colBatteryIn), ws.Cells(lastRow, colBatteryIn)))
-    batteryOut = Application.WorksheetFunction.Sum(ws.Range(ws.Cells(2, colBatteryOut), ws.Cells(lastRow, colBatteryOut)))
-    gridPurchases = Application.WorksheetFunction.Sum(ws.Range(ws.Cells(2, colGridPurchases), ws.Cells(lastRow, colGridPurchases)))
+    
+    ' Battery calculations only if present
+    If hasBattery Then
+        batteryIn = Application.WorksheetFunction.Sum(ws.Range(ws.Cells(2, colBatteryIn), ws.Cells(lastRow, colBatteryIn)))
+        batteryOut = Application.WorksheetFunction.Sum(ws.Range(ws.Cells(2, colBatteryOut), ws.Cells(lastRow, colBatteryOut)))
+        batteryLosses = batteryIn - batteryOut
+    Else
+        batteryIn = 0
+        batteryOut = 0
+        batteryLosses = 0
+    End If
     
     ' Calculate derived values
     Dim inverterLosses As Double
@@ -883,16 +894,26 @@ Function CreateMermaidDiagram(ws As Worksheet) As String
             "    " & Format(inverterOutput / pvTotal * 100, "#0.0") & "%]" & vbNewLine & _
             "    B --> IL[Inverter Losses" & vbNewLine & _
             "    " & Format(inverterLosses, "#,##0.00") & " kWh" & vbNewLine & _
-            "    " & Format(inverterLosses / pvTotal * 100, "#0.0") & "%]" & vbNewLine & _
-            "    A --> BAT[Battery" & vbNewLine
+            "    " & Format(inverterLosses / pvTotal * 100, "#0.0") & "%]"
             
-    ' Part 3
-    part3 = "    " & Format(batteryIn, "#,##0.00") & " kWh in" & vbNewLine & _
-            "    " & Format(batteryOut, "#,##0.00") & " kWh out]" & vbNewLine & _
-            "    BAT --> BL[Battery Losses" & vbNewLine & _
-            "    " & Format(batteryLosses, "#,##0.00") & " kWh" & vbNewLine & _
-            "    " & Format(batteryLosses / pvTotal * 100, "#0.0") & "%]" & vbNewLine & _
-            "    BAT --> B" & vbNewLine & _
+    If hasBattery Then
+        part2 = part2 & vbNewLine & _
+                "    A --> BAT[Battery" & vbNewLine
+    End If
+    
+    ' Part 3 - conditionally include battery nodes
+    If hasBattery Then
+        part3 = "    " & Format(batteryIn, "#,##0.00") & " kWh in" & vbNewLine & _
+                "    " & Format(batteryOut, "#,##0.00") & " kWh out]" & vbNewLine & _
+                "    BAT --> BL[Battery Losses" & vbNewLine & _
+                "    " & Format(batteryLosses, "#,##0.00") & " kWh" & vbNewLine & _
+                "    " & Format(batteryLosses / pvTotal * 100, "#0.0") & "%]" & vbNewLine & _
+                "    BAT --> B" & vbNewLine
+    Else
+        part3 = vbNewLine
+    End If
+    
+    part3 = part3 & _
             "    D --> E[Load" & vbNewLine & _
             "    " & Format(load, "#,##0.00") & " kWh" & vbNewLine & _
             "    " & Format(load / pvTotal * 100, "#0.0") & "%]" & vbNewLine & _
@@ -993,8 +1014,6 @@ Sub CreateEnergyCharts()
         .Parent.Top = 290  ' Adjusted for taller first chart
         .Parent.Left = 10
         .Parent.Width = 420
-        .Parent.Height = 250  ' Increased from 210
+        .Parent.Height = 250 
     End With
 End Sub
-
-
